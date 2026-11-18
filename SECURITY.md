@@ -1,0 +1,23 @@
+# Security and publishing
+
+This is the separate Do an du phong integration. Processing APIs require a dedicated server-side worker token plus a short-lived job lease. The worker token grants access to processing inputs across rooms and must never be delivered to a browser. Only one web instance is supported for room and queue coordination. Original/result download APIs still enforce the room creator's cookie; a product is downloadable only after its task is completed. Cancel processing before removing its inputs. Local media mode is disabled in production and must not replace private cloud storage on a public deployment. Never deploy the local `.env.local` or copy production credentials into this repository.
+
+Before committing, run `npm run check:publish`, `npm test`, `npm run build`, and `npm audit`. The publish check inspects tracked plus unignored files, rejects generated/private paths and common credential patterns, and compares candidate content with local env credential values without printing matched values. It does not replace GitHub secret scanning or a full security audit.
+
+Do not force-add `.env*` (except the blank `.env.example`), `.neon`, `data/`, `verification/`, build output, recordings or ZIP archives. `data/` includes hashed upload capabilities and metadata; browser IndexedDB includes upload tokens. Keep them private. Back up videos separately. If an actual secret is ever pushed, revoke/rotate it at the provider, then remove it from Git history; deleting the current file alone is insufficient.
+
+The private bucket and Postgres/Realtime credentials belong on the Node server. Never add them to frontend code, public environment prefixes or GitHub Actions logs. CI uses no production Neon credentials and runs offline tests only. Infrastructure project IDs in documentation are identifiers, not authentication credentials.
+
+## Access model and deployment limits
+
+Room codes are bearer invitations: anyone with a code can join and view that room. Only the current host controls recording and remote camera configuration; each camera arms locally. Upload credentials authorize one recording, remain valid for retry while its spool exists, and are not account-level credentials. Downloads stream through the app and require the room owner cookie on every request; no presigned bucket URL is handed to participants.
+
+This version has no user accounts and allows anonymous room creation with an in-memory rate limit. It does not provide global storage quotas, per-user billing limits, or distributed abuse protection. Before exposing it broadly to untrusted Internet traffic, restrict access/room creation at an authenticated reverse proxy or add app authentication and quotas. Publishing source code to GitHub does not publish the local secrets or deploy the app automatically.
+
+Use HTTPS, preserve authorization/Host headers correctly, disable SSE proxy buffering, and keep the runtime spool outside the public web root on persistent storage. Run one Node instance. A restart closes active rooms. Configure TURN where required; phone browser/OS interruptions and hardware-specific camera settings still need physical-device testing.
+
+If reporting a vulnerability, use the repository's private security reporting feature when enabled. Do not include secrets, live room codes or private videos in a public issue.
+
+Room creator is the only admin for their room. Ownership is a 256-bit HttpOnly/SameSite=Strict cookie, Secure in production, hashed in Postgres, valid for 30 days. A room code grants participation, never ownership. Host disconnect does not promote another participant. POST mutations require authenticated room session and same-origin checks. Do not expose admin cookies, and serve over HTTPS.
+
+Starting a new take is blocked while any previous recording has not been uploaded (unless the room admin explicitly deletes it). Once that condition is satisfied, starting a new take permanently purges previous takes in that room (private objects + sidecars, spool and DB rows) before scheduling capture. Deleted upload capabilities fail closed; deletion is serialized with in-flight uploads to prevent resurrection. Cloud deletion failure blocks the next take. Connected clients clear temporary copies; offline clients reconcile on rejoin. File copies already downloaded or extracted from a participant-owned device cannot be revoked. No application-wide admin account or library remains.

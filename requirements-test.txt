@@ -1,0 +1,4 @@
+# Geometry CI: no model download, GPU or large torch installation required.
+numpy==2.5.5
+opencv-python-headless==5.1.0.95
+imageio-ffmpeg==0.8.1

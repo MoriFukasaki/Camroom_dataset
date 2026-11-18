@@ -1,0 +1,47 @@
+# Local credentials and provider links
+.env
+.env.*
+!.env.example
+.neon
+*.pem
+*.key
+# Runtime data and generated output
+/data/
+/dist/
+/node_modules/
+/verification/
+/preview.png
+*.zip
+*.mp4
+*.webm
+*.mov
+*.log
+.DS_Store
+Thumbs.db
+.venv/
+.idea/
+__pycache__/
+*.pyc
+legacy/inputs/
+legacy/outputs/
+legacy/output1/
+legacy/models/
+# Python tooling and generated/model files (including accidental copies outside legacy)
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+*.pt
+*.pth
+*.onnx
+*.engine
+*.safetensors
+*.avi
+*.mkv
+*.sqlite
+*.sqlite3
+*.db
+/calibration/
+/coverage/
+/.coverage
+/htmlcov/
