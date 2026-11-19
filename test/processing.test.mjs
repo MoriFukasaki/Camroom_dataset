@@ -30,3 +30,10 @@ test('processing waits for all three sources, persists, leases once, retries aft
   await restored.cancelRoom(room);assert.equal((await restored.get(job.id)).state,'cancelled');
   await assert.rejects(()=>restored.updateLease(job.id,newJob.leaseToken,{}));
 });
+
+test('import names enforce exactly three unique camera slots and nonempty files',async()=>{
+ const {validateImport}=await import('../processing.mjs');
+ const files=['cam-3.webm','cam-1.mp4','cam-2.mp4'].map(name=>({name,size:10}));
+ assert.deepEqual(validateImport(files).map(x=>x.slot),[1,2,3]);
+ for(const invalid of [files.slice(1),[files[0],files[0],files[2]],files.map(x=>({...x,size:0})),files.map(x=>({...x,name:'other.mp4'}))])assert.throws(()=>validateImport(invalid));
+});

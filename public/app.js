@@ -417,6 +417,7 @@ async function applyCameraConfig(config) {
 }
 function updateRecordingUI() {
   if (!me) return;
+  $('import-panel').hidden = hostId !== me.id;
   const owner = hostId === me.id, cameras = [me, ...peers.values()].filter(p => p.role === 'camera');
   $('arm').hidden = me.role !== 'camera'; $('arm').disabled = recording.active || paused;
   $('arm').textContent = armed ? '✓ Máy này sẵn sàng' : 'Sẵn sàng quay trên máy này';
@@ -530,3 +531,50 @@ setInterval(async()=>{
     if(me.snapshotMode)for(const p of peers.values()){const image=latestSnapshots.get(p.slot);if(image)status(p.id,`Ảnh cách đây ${Math.max(0,Math.floor((Date.now()-image.receivedAt)/1000))} giây`,true);}
   }catch{}
 },5000);
+
+// Imported originals use the same authenticated upload and processing queue.
+let importedFiles=[],importUrls=[],importBusy=false,selectionVersion=0;
+const importReady=()=>{$('import-start').disabled=importBusy||importedFiles.length!==3||!$('import-confirm').checked;};
+$('import-confirm').onchange=importReady;
+async function selectImports(files){
+  if(importBusy)return;
+  const version=++selectionVersion;importedFiles=[];importReady();$('import-confirm').checked=false;
+  for(const url of importUrls)URL.revokeObjectURL(url);importUrls=[];$('import-list').replaceChildren();
+  try{
+    if(files.length!==3)throw Error('Chọn đúng 3 video.');
+    const sorted=[...files].map(file=>{const match=/^cam-([123])\.(mp4|webm)$/i.exec(file.name);if(!match||!file.size)throw Error('Sai tên: dùng cam-1.mp4, cam-2.mp4, cam-3.mp4 hoặc .webm.');return {file,slot:Number(match[1]),mime:'video/'+match[2].toLowerCase()};}).sort((a,b)=>a.slot-b.slot);
+    if(sorted.some((x,i)=>x.slot!==i+1))throw Error('Trùng hoặc thiếu slot.');
+    for(const item of sorted){
+      const video=document.createElement('video'),url=URL.createObjectURL(item.file);importUrls.push(url);
+      video.controls=true;video.muted=true;video.playsInline=true;video.preload='auto';video.style.width='min(100%,320px)';
+      await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Không đọc được video trong 20 giây.')),20000);video.onloadeddata=()=>{clearTimeout(timer);Number.isFinite(video.duration)&&video.duration>0&&video.videoWidth>0?resolve():reject(Error('Video không hợp lệ.'));};video.onerror=()=>{clearTimeout(timer);reject(Error('Trình duyệt không mở được '+item.file.name));};video.src=url;});
+      if(version!==selectionVersion)return;
+      item.duration=video.duration;
+      const frame=document.createElement('canvas');frame.width=video.videoWidth;frame.height=video.videoHeight;frame.getContext('2d').drawImage(video,0,0);latestSnapshots.set(item.slot,{image:frame.toDataURL('image/jpeg',0.85)});
+      const row=document.createElement('div'),label=document.createElement('p');label.textContent=`${item.file.name} → CAM ${item.slot} · ${['','phải','giữa','trái'][item.slot]} · ${video.videoWidth}×${video.videoHeight} · ${video.duration.toFixed(1)}s`;row.append(label,video);$('import-list').prepend(row);
+    }
+    importedFiles=sorted;$('import-status').textContent='Tên và định dạng hợp lệ. Xem lại ba video rồi đánh dấu xác nhận.';
+  }catch(e){$('import-status').textContent=e.message;}finally{importReady();}
+}
+$('import-files').onchange=e=>selectImports(e.target.files);
+$('import-drop').ondragover=e=>e.preventDefault();
+$('import-drop').ondrop=e=>{e.preventDefault();selectImports(e.dataTransfer.files);};
+$('import-start').onclick=async()=>{
+  if(importBusy||importedFiles.length!==3||!$('import-confirm').checked)return;
+  importBusy=true;importReady();
+  try{
+    const selected=[...importedFiles],{uploads}=await api('processing/import',{files:selected.map(x=>({name:x.file.name,size:x.file.size}))});
+    for(const job of uploads){
+      const item=selected.find(x=>x.slot===job.slot),post=async(path,body,type)=>{
+        let error;
+        for(let attempt=0;attempt<3;attempt++){try{const response=await fetch(`/api/uploads/${job.id}/${path}`,{method:'POST',headers:{Authorization:`Bearer ${job.token}`,'Content-Type':type},body,signal:AbortSignal.timeout(180000)});const result=await response.json();if(!response.ok)throw Error(result.error||'Upload lỗi');return result;}catch(e){error=e;}}
+        throw error;
+      };
+      let count=0;
+      for(let offset=0;offset<item.file.size;offset+=2*1024*1024){$('import-status').textContent=`Đang gửi ${item.file.name}: ${Math.floor(offset/item.file.size*100)}% — giữ trang mở`;await post(`chunk?index=${count}`,item.file.slice(offset,offset+2*1024*1024),'application/octet-stream');count++;}
+      await post('complete',JSON.stringify({count,mime:item.mime,actualStartedAt:0,actualStoppedAt:item.duration*1000}),'application/json');
+    }
+    $('import-status').textContent='Đã gửi đủ video. Worker sẽ ghép và chạy YOLO; theo dõi ở Video thành phẩm.';
+  }catch(e){$('import-status').textContent='Chưa hoàn tất: '+e.message+'. Giữ các file gốc. Hủy tác vụ và xóa video nhập dở trước khi nhập lại.';}finally{importBusy=false;importReady();}
+};
+

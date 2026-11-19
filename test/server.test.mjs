@@ -192,3 +192,28 @@ test('three original uploads automatically queue a product; only leased worker p
     await leave(a,b,c);streams.forEach(x=>x.close());
   }
 });
+
+test('admin imports without cameras; rejects names and queues only complete originals',async()=>{
+ const {mkdtemp}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const {join:joinPath}=await import('node:path');
+ const previous={directory:records.directory,upload:records.upload},queueDir=processing.directory,local=process.env.CAMROOM_LOCAL_MEDIA;
+ records.directory=await mkdtemp(joinPath(tmpdir(),'import-records-'));processing.directory=await mkdtemp(joinPath(tmpdir(),'import-queue-'));process.env.CAMROOM_LOCAL_MEDIA='1';
+ const admin=await join({create:true,role:'viewer',maxCameras:3}),member=await join({code:admin.code,role:'viewer'});
+ const files=[3,1,2].map(slot=>({name:`cam-${slot}.mp4`,size:5}));
+ try{
+  assert.equal((await post('processing/import',{files},member)).status,403);
+  assert.notEqual((await post('processing/import',{files:[files[0],files[0],files[2]]},admin)).status,200);
+  const imported=await post('processing/import',{files},admin);assert.equal(imported.status,200);
+  assert.deepEqual(imported.body.uploads.map(x=>x.slot),[1,2,3]);
+  assert.equal((await post('processing/import',{files},admin)).status,409);
+  const upload=async job=>{
+   const headers={Authorization:`Bearer ${job.token}`};
+   assert.equal((await fetch(`${base}/api/uploads/${job.id}/chunk?index=0`,{method:'POST',headers,body:Buffer.from('video')})).status,200);
+   assert.equal((await fetch(`${base}/api/uploads/${job.id}/complete`,{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({count:1,mime:'video/mp4',actualStartedAt:0,actualStoppedAt:1000})})).status,200);
+  };
+  for(const job of imported.body.uploads.slice(0,2))await upload(job);
+  assert.equal(await processing.claim(),null);
+  await upload(imported.body.uploads[2]);const job=await processing.claim();assert.deepEqual(job.inputs.map(x=>x.slot),[1,2,3]);assert.ok(job.inputs.every(x=>x.actualStartedServerAt===0));
+  assert.ok(job.inputs.every(x=>!x.token));
+ }finally{Object.assign(records,previous);processing.directory=queueDir;if(local===undefined)delete process.env.CAMROOM_LOCAL_MEDIA;else process.env.CAMROOM_LOCAL_MEDIA=local;await leave(admin,member);}
+});
+

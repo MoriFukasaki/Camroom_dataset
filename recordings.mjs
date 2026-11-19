@@ -82,6 +82,7 @@ export class RecordingStore {
       const job = await this.authenticated(id, token);
       if (job.state === 'uploaded') return this.public(job);
       if (!Number.isInteger(details.count) || details.count < 1 || job.chunks.length !== details.count || !job.bytes) throw Error('Chưa nhận đủ dữ liệu video.');
+      if(job.kind==='import' && job.expectedBytes!==job.bytes)throw Error('Video nhập chưa đủ dung lượng.');
       if (typeof details.mime !== 'string' || details.mime.length > 200 || !/^video\/(webm|mp4)(;[a-zA-Z0-9=.," _-]+)?$/.test(details.mime)) throw Error('Định dạng video không hợp lệ.');
       if ((details.actualStartedAt !== undefined || details.actualStoppedAt !== undefined) &&
           (!Number.isFinite(details.actualStartedAt) || !Number.isFinite(details.actualStoppedAt) || details.actualStartedAt < 0 || details.actualStoppedAt < details.actualStartedAt)) throw Error('Thời gian video không hợp lệ.');

@@ -7,7 +7,7 @@ import { databaseEnabled, persistRecording, listRecordings, saveRoom, loadRoom, 
 import { iceConfiguration } from './ice.mjs';
 import { pipeline } from 'node:stream/promises';
 import { ownerHash, newOwnerToken, ownsRoom, setOwnerCookie } from './room-owner.mjs';
-import { ProcessingQueue, publicProcessing, workerAuthorized } from './processing.mjs';
+import { ProcessingQueue, publicProcessing, workerAuthorized, validateImport } from './processing.mjs';
 import { requestSnapshot, acceptSnapshot } from './snapshots.mjs';
 import { Readable } from 'node:stream';
 import { createReadStream } from 'node:fs';
@@ -208,6 +208,26 @@ export const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/leave') { remove(p); return send(res, 200, {}); }
     if (req.method === 'POST' && url.pathname === '/api/time') return send(res, 200, { now: Date.now() });
     if(req.method==='POST' && url.pathname==='/api/snapshot') { const image=acceptSnapshot(p.room,p,await body(req));if(image)broadcast(p.room,'snapshot',image);return send(res,image?200:409,{}); }
+    if(req.method==='POST' && url.pathname==='/api/processing/import') {
+      if(p.id!==p.room.hostId)return send(res,403,{error:'Chỉ admin được nhập video.'});
+      if(p.room.take?.active||p.room.transitioning)return send(res,409,{error:'Phòng đang bận.'});
+      const data=await body(req),files=validateImport(data.files);
+      if(!storageConfigured()&&!localMedia())return send(res,503,{error:'Chưa cấu hình storage.'});
+      p.room.transitioning=true;
+      try {
+        if((await processing.list(p.room.code)).some(j=>!['completed','cancelled'].includes(j.state)))return send(res,409,{error:'Hoàn tất hoặc hủy tác vụ cũ trước.'});
+        if((await roomJobs(p.room)).some(j=>!['uploaded','deleted'].includes(j.state)))return send(res,409,{error:'Video cũ chưa upload xong.'});
+        await purgeRoom(p.room);
+        const take={id:randomBytes(8).toString('hex'),active:false,cameraIds:[]};
+        p.room.latestTake=take.id;p.room.take=take;await saveRoom(p.room);
+        broadcast(p.room,'recordings-reset',{room:p.room.code,take:take.id});
+        const uploads=[];
+        for(const file of files)uploads.push(await records.create({room:p.room.code,take:take.id,peerId:p.id,slot:file.slot,name:file.name,kind:'import',expectedBytes:file.size,settings:{}}));
+        await processing.ensure(p.room.code,take.id,uploads.map(({token,...safe})=>safe));
+        broadcast(p.room,'take',take);
+        return send(res,200,{uploads});
+      } finally {p.room.transitioning=false;}
+    }
     if(req.method==='POST' && url.pathname==='/api/processing/state')return send(res,200,{jobs:(await processing.list(p.room.code)).filter(x=>x.take===p.room.latestTake).map(publicProcessing)});
     if(req.method==='POST' && ['/api/processing/calibration','/api/processing/retry','/api/processing/cancel'].includes(url.pathname)) {
       if(p.id!==p.room.hostId)return send(res,403,{error:'Chỉ admin được điều khiển xử lý.'});

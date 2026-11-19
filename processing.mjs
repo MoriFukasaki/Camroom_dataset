@@ -63,3 +63,14 @@ export class ProcessingQueue {
   }
   async cancelRoom(room) { return this.locked(async()=>{for(const job of await this.list(room))if(job.state!=='cancelled'){job.state='cancelled';job.message='Admin đã bỏ tác vụ';await this.save(job);}}); }
 }
+
+export function validateImport(files) {
+  if(!Array.isArray(files)||files.length!==3)throw Error('Chọn đúng 3 video: cam-1, cam-2, cam-3.');
+  const sorted=files.map(file=>{
+    const match=/^cam-([123])\.(mp4|webm)$/i.exec(file.name||'');
+    if(!match||!Number.isSafeInteger(file.size)||file.size<=0)throw Error('Tên phải là cam-1.mp4, cam-2.mp4, cam-3.mp4 (hoặc .webm); file không được rỗng.');
+    return {...file,slot:Number(match[1]),mime:'video/'+match[2].toLowerCase()};
+  }).sort((a,b)=>a.slot-b.slot);
+  if(sorted.some((file,i)=>file.slot!==i+1))throw Error('Trùng hoặc thiếu slot camera.');
+  return sorted;
+}

@@ -75,3 +75,8 @@ npm run prove:integration
 Bài này dùng đúng cấu hình đã đo cho **bộ mẫu**, xuất 1 giây 30 FPS có YOLO, chạy đủ API upload → queue → worker → Python → upload thành phẩm → admin download và so SHA-256. Kết quả ở `verification/final-integrated.mp4`, báo cáo `verification/integration-report.json`. Cấu hình bộ mẫu không được áp mặc định cho video mới. Giới hạn 1 giây chỉ nằm trong script QA; worker bình thường xử lý toàn bộ phần thời gian chung. Không đặt `PROCESSING_TEST_SECONDS` khi dùng thật.
 
 Tham khảo nguồn gốc web: `docs/CAMROOM-LEGACY.md`; bản Python gốc sao chép trong `legacy/`. Không có auto-deploy, không sửa schema/bucket production trong bước dựng project này.
+
+
+### Ghép video có sẵn
+Tạo phòng bằng vai trò chỉ xem, admin kéo 3 file vào mục Ghép video có sẵn + YOLO. Tên bắt buộc `cam-1.mp4`, `cam-2.mp4`, `cam-3.mp4` (hoặc `.webm`). CAM 1 phải, 2 giữa, 3 trái; output trái sang phải là 3 | 2 | 1. Kiểm tra preview và xác nhận trước upload. Ghép từ giây 0, lấy thời lượng ngắn nhất; tên file không chứng minh nội dung hay đồng bộ thời gian. Cắt đồng bộ nguồn trước nếu cần. Admin nhập lượt mới xóa lượt cũ; upload lỗi phải hủy tác vụ và xóa các file nhập dở trước nhập lại. Giữ bản gốc, không đóng trang khi upload. Nếu tự căn thất bại cần căn điểm thủ công, không ép xuất video sai.
+YOLO chạy bằng worker PC hiện có (`npm run worker`), cần cài `requirements.txt` vào `.venv` và model `legacy/models/yolov8s-worldv2.pt`; Render Node không chạy YOLO. Không có worker thì tác vụ đợi trong hàng đợi.
