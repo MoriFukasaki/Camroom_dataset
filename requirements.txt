@@ -2,5 +2,5 @@
 numpy==2.5.5
 opencv-python==5.1.0.95
 imageio-ffmpeg==0.8.1
-ultralytics==8.4.215
+ultralytics==8.4.216
 torch==2.15.0
